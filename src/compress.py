@@ -1,12 +1,7 @@
-import os
-import platform
-import requests
 import shutil
 import subprocess
 import sys
-import zipfile
-import tarfile
-import glob
+import os
 
 # Check for ffmpeg or ffprobe in the system's PATH or specific directories
 def get_ffmpeg_and_ffprobe():
@@ -85,13 +80,13 @@ def compress_video(ffmpeg_bin, file_path, target_percentage, codec):
     target_size = int(original_size * (target_percentage / 100))
 
     # Get video duration
-    probe = get_video_duration(ffprobe_bin, file_path)
+    duration = get_video_duration(ffprobe_bin, file_path)
 
     # Handle case where ffprobe fails to fetch duration
-    if probe.returncode != 0:
-        raise RuntimeError(f"Error running ffprobe: {probe.stderr}")
+    if duration.returncode != 0:
+        raise RuntimeError(f"Error running ffprobe: {duration.stderr}")
     
-    duration = probe.stdout.strip()
+    duration = duration.stdout.strip()
     if not duration:
         raise RuntimeError("Failed to get video duration. Output from ffprobe is empty.")
     
