@@ -3,7 +3,7 @@ import subprocess
 import sys
 import os
 
-# Check for ffmpeg or ffprobe in the system's PATH or specific directories
+# Check for ffmpeg or ffprobe in the system's PATH
 def get_ffmpeg_and_ffprobe():
     ffmpeg_in_path = shutil.which("ffmpeg")
     ffprobe_in_path = shutil.which("ffprobe")
@@ -18,18 +18,9 @@ def get_ffmpeg_and_ffprobe():
     if ffprobe_in_path:
         print(f"FFprobe found in system PATH: {ffprobe_in_path}")
         ffprobe_bin = ffprobe_in_path
-    elif ffmpeg_bin:  # If ffmpeg is found but not ffprobe, try the same directory
-        ffprobe_bin = os.path.join(os.path.dirname(ffmpeg_bin), "ffprobe")
-        if os.path.exists(ffprobe_bin):
-            print(f"FFprobe found in the same directory as FFmpeg: {ffprobe_bin}")
-        else:
-            ffprobe_bin = None
-            print("FFprobe not found in the same directory as FFmpeg.")
     else:
-        ffprobe_bin = None
-        print("FFprobe not found in system PATH and FFmpeg directory.")
-
-    # Return both binaries (ffmpeg and ffprobe)
+        ffmpeg_bin = None
+        
     return ffmpeg_bin, ffprobe_bin
 
 ffmpeg_bin, ffprobe_bin = get_ffmpeg_and_ffprobe()
@@ -55,9 +46,6 @@ def detect_best_codec(ffmpeg_path):
 
 # Get video duration
 def get_video_duration(ffprobe_bin, file_path):
-    # Print the exact command being run
-    print(f"Running ffprobe command: {ffprobe_bin} -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{file_path}\"")
-    
     duration = subprocess.run(
         [ffprobe_bin, 
          "-v", "error", 
@@ -70,19 +58,7 @@ def get_video_duration(ffprobe_bin, file_path):
         text=True
     )
 
-    return duration
-
-# Compress video using the previously gotten codec
-def compress_video(ffmpeg_bin, file_path, target_percentage, codec):
-    filename = os.path.basename(file_path)
-    file_dir = os.path.dirname(file_path)
-    original_size = os.path.getsize(file_path)
-    target_size = int(original_size * (target_percentage / 100))
-
-    # Get video duration
-    duration = get_video_duration(ffprobe_bin, file_path)
-
-    # Handle case where ffprobe fails to fetch duration
+        # Handle case where ffprobe fails to fetch duration
     if duration.returncode != 0:
         raise RuntimeError(f"Error running ffprobe: {duration.stderr}")
     
@@ -95,6 +71,19 @@ def compress_video(ffmpeg_bin, file_path, target_percentage, codec):
         duration = float(duration)
     except ValueError:
         raise RuntimeError(f"Invalid duration value returned: '{duration}'")
+
+    
+    return duration
+
+# Compress video using the previously gotten codec
+def compress_video(ffmpeg_bin, file_path, target_percentage, codec):
+    filename = os.path.basename(file_path)
+    file_dir = os.path.dirname(file_path)
+    original_size = os.path.getsize(file_path)
+    target_size = int(original_size * (target_percentage / 100))
+
+    # Get video duration
+    duration = get_video_duration(ffprobe_bin, file_path)
 
     target_bitrate = (target_size * 8) / duration
 
@@ -127,6 +116,5 @@ if __name__ == "__main__":
         print("Please provide a valid number for target percentage.")
         sys.exit(1)
 
-    
     best_codec = detect_best_codec(ffmpeg_bin)
     compress_video(ffmpeg_bin, input_file, target_percentage, best_codec)
