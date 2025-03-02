@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget, QMainWindow, QPlainTextEdit, QPushButton, QFileDialog
+from PyQt6.QtWidgets import *
 from PyQt6.QtCore import Qt
 from PIL import Image, ExifTags, PngImagePlugin, TiffImagePlugin
 import sys
-import compress
+from compress import *
 
 class DragDropWidget(QMainWindow):
     def __init__(self):
@@ -13,23 +13,48 @@ class DragDropWidget(QMainWindow):
         self.setGeometry(100, 100, 600, 400)
         
         # Set up main layout
-        self.label = QLabel("Drag and drop image files here", self)
+        self.label = QLabel("Drag and drop video files here", self)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setStyleSheet("font-size: 18px; padding: 20px;")
+
+        self.compress_button_group = QGroupBox("Size calculation", self)
+        radio_layout = QVBoxLayout()
+        self.radio1 = QRadioButton("Target Percentage", self)
+        self.radio2 = QRadioButton("Target Size", self)
+        self.radio1.setChecked(True)
+
+        radio_layout.addWidget(self.radio1)
+        radio_layout.addWidget(self.radio2)
+        self.compress_button_group.setLayout(radio_layout)
         
-        self.output_text = QPlainTextEdit(self)
-        self.output_text.setReadOnly(True)
+        self.compression_box_percent = QSpinBox(self)
+        self.compression_box_percent.setMinimum(1)
+        self.compression_box_percent.setMaximum(100)
+        self.compression_box_percent.setSuffix("%")
+
+        self.compression_box_mb = QSpinBox(self)
+        self.compression_box_mb.setMinimum(1)
+        self.compression_box_mb.setMaximum(2147483647)
+        self.compression_box_mb.setSuffix("Mb")
+
+        self.compression_box_mb.hide()
+
+        # Connect radio buttons to the toggle function
+        self.radio1.toggled.connect(self.toggle_compression_box)
+        self.radio2.toggled.connect(self.toggle_compression_box)
 
         self.compress_button = QPushButton("Compress", self)
-        self.compress_button.clicked.connect(self.compress_video)
+        self.compress_button.clicked.connect(compress_video)
 
         self.file_picker = QFileDialog(self, caption="Browse")
 
         layout = QVBoxLayout()
         layout.addWidget(self.label)
-        layout.addWidget(self.output_text)
-        layout.addWidget(self.compress_button)
         layout.addWidget(self.file_picker)
+        layout.addWidget(self.compress_button_group)
+        layout.addWidget(self.compression_box_percent)
+        layout.addWidget(self.compression_box_mb)
+        layout.addWidget(self.compress_button)
 
         container = QWidget()
         container.setLayout(layout)
@@ -38,6 +63,15 @@ class DragDropWidget(QMainWindow):
         # Enable drag and drop
         self.setAcceptDrops(True)
 
+    def toggle_compression_box(self):
+        """Toggle visibility of spin boxes based on selected radio button."""
+        if self.radio1.isChecked():
+            self.compression_box_percent.show()
+            self.compression_box_mb.hide()
+        else:
+            self.compression_box_percent.hide()
+            self.compression_box_mb.show()
+    
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
@@ -101,9 +135,6 @@ class DragDropWidget(QMainWindow):
         except Exception as e:
             metadata["Error"] = str(e)
         return metadata
-    
-    def compress_video(self):
-        compress.compress_video()
 
 
 if __name__ == "__main__":
