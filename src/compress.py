@@ -27,22 +27,83 @@ ffmpeg_bin, ffprobe_bin = get_ffmpeg_and_ffprobe()
 
 # Detect the best codec by getting a list of supported codecs
 def detect_best_codec(ffmpeg_path):
-    result = subprocess.run(
-        [ffmpeg_path, "-hide_banner", "-hwaccels"],
-        capture_output=True,
-        text=True
-    )
+    test_file = os.path.join(os.path.dirname(__file__), "test.mp4")
+    
+    if not os.path.exists(test_file):
+        print("Test file not found, generating a small dummy video...")
+        gen_cmd = [
+            ffmpeg_path,
+            "-f", "lavfi",
+            "-i", "testsrc=duration=2:size=128x128:rate=30",
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            test_file
+        ]
+        result = subprocess.run(gen_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to generate test file: {result.stderr}")
+    
+    candidates = [
+        ("h264_vaapi", [
+            ffmpeg_path,
+            "-hwaccel", "vaapi",
+            "-vaapi_device", "/dev/dri/renderD128",
+            "-i", test_file,
+            "-vf", "format=nv12,hwupload",
+            "-c:v", "h264_vaapi",
+            "-frames:v", "2",
+            "-f", "null", "-"
+        ]),
+        ("h264_nvenc", [
+            ffmpeg_path,
+            "-i", test_file,
+            "-c:v", "h264_nvenc",
+            "-pix_fmt", "yuv420p",
+            "-frames:v", "2",
+            "-f", "null", "-"
+        ]),
+        ("h264_qsv", [
+            ffmpeg_path,
+            "-i", test_file,
+            "-c:v", "h264_qsv",
+            "-frames:v", "2",
+            "-f", "null", "-"
+        ]),
+        ("libx264", [
+            ffmpeg_path,
+            "-i", test_file,
+            "-c:v", "libx264",
+            "-frames:v", "2",
+            "-f", "null", "-"
+        ]),
+    ]
 
-    hardware_accels = result.stdout.lower()
+    for codec, cmd in candidates:
+        print(f"Testing {codec}...")
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode == 0:
+            print(f"✅ {codec} works, using it.")
+            return codec
 
-    if "cuda" in hardware_accels or "nvenc" in hardware_accels:
-        return "h264_nvenc"         # NVIDIA GPU
-    elif "qsv" in hardware_accels:
-        return "h264_qsv"           # Intel Quick Sync Video
-    elif "amf" in hardware_accels:
-        return "h264_amf"           # AMD GPU
-    else:
-        return "libx264"            # Software fallback
+    print("⚠️ No hardware codec worked, falling back to libx264.")
+    return "libx264"
+    
+    # result = subprocess.run(
+    #     [ffmpeg_path, "-hide_banner", "-hwaccels"],
+    #     capture_output=True,
+    #     text=True
+    # )
+
+    # hardware_accels = result.stdout.lower()
+
+    # if "vaapi" in hardware_accels:
+    #     return "h264_vaapi"         # AMD GPU
+    # elif "qsv" in hardware_accels:
+    #     return "h264_qsv"           # Intel Quick Sync Video
+    # elif "cuda" in hardware_accels or "nvenc" in hardware_accels:
+    #     return "h264_nvenc"         # NVIDIA GPU
+    # else:
+    #     return "libx264"            # Software fallback
 
 # Get video duration
 def get_video_duration(ffprobe_bin, file_path):
@@ -90,15 +151,29 @@ def compress_video(ffmpeg_bin, file_path, target_percentage, codec):
     output_filename = f"compressed_{filename}"
     output_path = os.path.join(file_dir, output_filename)
 
-    command = [
-        ffmpeg_bin, 
-        "-i", file_path, 
-        "-vcodec", codec,
-        "-b:v", f"{target_bitrate}", 
-        "-maxrate:v", f"{target_bitrate * 1.5}",
-        "-bufsize:v", f"{target_bitrate * 2}", 
-        output_path
-    ]
+    if codec == "h264_vaapi":
+        command = [
+            ffmpeg_bin, 
+            "-hwaccel", "vaapi",
+            "-vaapi_device", "/dev/dri/renderD128",
+            "-i", file_path,
+            "-vf", "format=nv12,hwupload",
+            "-c:v", "h264_vaapi",
+            "-b:v", f"{target_bitrate}",
+            "-maxrate", f"{target_bitrate * 1.5}",
+            "-bufsize", f"{target_bitrate * 2}", 
+            output_path
+        ]
+    else:
+        command = [
+            ffmpeg_bin, 
+            "-i", file_path, 
+            "-vcodec", codec,
+            "-b:v", f"{target_bitrate}", 
+            "-maxrate:v", f"{target_bitrate * 1.5}",
+            "-bufsize:v", f"{target_bitrate * 2}", 
+            output_path
+        ]
 
     subprocess.run(command)
     print(f"Compressed video saved as {output_path}")
