@@ -1,4 +1,4 @@
-# ffmpeg compress
+# Simple utility using ffmpeg to compress files :)
  
 ## Usage (Qt)
 ```bash
